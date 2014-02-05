@@ -35,3 +35,9 @@ Follow along on Twitter [@StateDecoded](http://twitter.com/statedecoded), or on 
 
 ## Supported by
 Development of The State Decoded was funded by [the John S. and James L. Knight Foundation’s News Challenge](http://www.knightfoundation.org/grants/20110158/).
+
+# DC Decoded
+
+## Notes for the DC site
+
+We're using an *unofficial* edition of the DC code provided by the DC Council, translated into the State Decoded XML format by the parser provided by [Joshua Tauberer](https://github.com/JoshData/dc-code-prototype-tools).
