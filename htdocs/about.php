@@ -33,7 +33,7 @@ Foundation</a>. It is part of a broader initiative to bring the law - the most
 important information in any community - to the people in more accessible,
 modern formats that can be used and reused. <a
 href="http://dcdecoded.org">DCDecoded.org</a> provides a platform to
-display Windy City legal information in a friendly, accessible, modern
+display legal information in a friendly, accessible, modern
 fashion. It is a part of the <a href="http://americadecoded/">America Decoded</a>
 network of legal code sites.
 </p>
