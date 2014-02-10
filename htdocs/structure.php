@@ -214,7 +214,12 @@ if(strlen($structure_id) > 0)
 			if ($level->label !== $struct->label && !empty($level->label))
 			{
 				$body .= ' It is part of ' . ucwords($level->label) . ' ' . $level->identifier . ', '
-				.'titled “' . $level->name . '.”';
+				.'titled “' . $level->name;
+				if (substr($level->name, -1, 1) !== '.')
+				{
+					$body .= '.';
+				}
+				$body .= '"';
 			}
 
 		}
