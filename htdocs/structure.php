@@ -198,7 +198,12 @@ if(strlen($structure_id) > 0)
 {
 
 	$body = '<p>This is '.ucwords($struct->label).' '.$struct->identifier.' of the ' . LAWS_NAME
-		. ', titled “'.$struct->name.'.”';
+		. ', titled “'.$struct->name;
+	if (substr($struct->name, -1, 1) !== '.')
+	{
+		$body .= '.';
+	}
+	$body .= '"';
 
 	if (count((array) $structure) > 1)
 	{
