@@ -49,9 +49,10 @@ $content->set('body',
 				of modern website design. It’s like the expensive software lawyers use, but free and
 				wonderful.</p>
 
-				<p>This is a public beta test of ' . SITE_TITLE . ', which is to say that everything
-				is under development. Things are funny looking, broken, and generally unreliable
-				right now.</p>
+				<p>This is a public beta test of DC Decoded, which is to say that everything is under
+				development, but is at a point where it may be viewed by the public. DC Decoded is
+				offered as a resource only, and any official reliance or citation must be made to
+				the DC Official Code.</p>
 
 				<p>This site is powered by <a href="http://www.statedecoded.com/">The State
 				Decoded</a>.</p>

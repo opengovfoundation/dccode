@@ -63,7 +63,7 @@ article citations, and much more.
 	The data that powers <a
 href="http://dcdecoded.org">DCDecoded.org</a> is also
 <a href="http://dccouncil.us/UnofficialDCCode">available from
-the DC Council\'s Office</a>.  The official code is maintained by the District of Columbia
+the Council of the District of Columbia</a>.  The official code is maintained by the District of Columbia
 and should be the primary reference for any legal questions. Even then, it is
 always good to consult with a lawyer when interpreting the law.
 </p>
@@ -115,8 +115,10 @@ href="http://disqus.com/">Disqus</a>.
 
 <h2>Disclaimer</h2>
 <p>
-	This is not the official copy of the DC Code and should not
-be relied upon for legal or any other official purposes.  The <a
+	This is not the official copy of the DC code. It is offered as a resource only,
+	and any official reliance or citation must be made to the DC Official Code located
+	on the <a href="http://dc.gov/DC/Government/DC+Courts+&+Laws/DC+Laws">Council
+	of the District of Columbia website</a>.  The <a
 href="http://opengovfoundation.org/">OpenGov Foundation</a> offers open
 law data with no warranty as to accuracy or completeness.
 </p>
