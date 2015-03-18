@@ -25,16 +25,19 @@ class API
 	{
 
 		/*
-		 * If APC is running, retrieve the keys from APC.
+		 * If an in-memory cache is running, retrieve the keys.
 		 */
-		if (APC_RUNNING === TRUE)
+		global $cache;
+		if (isset($cache))
 		{
-			$api_keys = apc_fetch('api_keys');
+			
+			$api_keys = $cache->retrieve('api_keys');
 			if ($api_keys !== FALSE)
 			{
 				$this->all_keys = $api_keys;
 				return TRUE;
 			}
+			
 		}
 
 		/*
@@ -87,11 +90,11 @@ class API
 		}
 
 		/*
-		 * If APC is running, store the API keys in APC.
+		 * If an in-memory cache is running, store the API keys within it.
 		 */
-		if (APC_RUNNING === TRUE)
+		if (isset($cache))
 		{
-			apc_store('api_keys', $this->all_keys);
+			$cache->store('api_keys', $this->all_keys);
 		}
 
 		return TRUE;
@@ -387,12 +390,15 @@ class API
 		}
 
 		/*
-		 * If APC is installed, then delete the cache of the keys, since it's been invalidated by
-		 * the addition of this key.
+		 * If an in-memory cache is running, then delete the cache of the keys, since it's been
+		 * invalidated by the addition of this key.
 		 */
-		if ( extension_loaded('apc') || (ini_get('apc.enabled') === 1) )
+		global $cache;
+		if (isset($cache))
 		{
-			apc_delete('api_keys');
+			
+			$cache->erase('api_keys');
+			
 		}
 
 		return TRUE;

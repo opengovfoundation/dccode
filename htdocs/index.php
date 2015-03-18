@@ -19,7 +19,7 @@
  */
 if (!isset($_SERVER['HTTP_MOD_ENV']))
 {
-	die('The State Decoded cannot run without Apache’s mod_env installed.');
+	die('The State Decoded cannot run without Apache\'s mod_env installed.');
 }
 
 /*
@@ -133,66 +133,11 @@ if (isset($_SERVER['EDITION_ID']))
 }
 
 /*
- * If APC is not running.
+ * Include the site's config file.
  */
-if ( !extension_loaded('apc') || (ini_get('apc.enabled') != 1) )
+if ( (include INCLUDE_PATH . '/config.inc.php') === FALSE )
 {
-
-	/*
-	 * Include the site's config file.
-	 */
-	if ( (include INCLUDE_PATH . '/config.inc.php') === FALSE )
-	{
-		die('Cannot run without a config.inc.php file. See the installation documentation.');
-	}
-
-	define('APC_RUNNING', FALSE);
-
-}
-
-/*
- * Else if APC is running, get data from the cache.
- */
-else
-{
-
-	/*
-	 * Attempt to load the config file constants out of APC.
-	 */
-	$result = apc_load_constants('config');
-	
-	/*
-	 * If loading from APC worked, just set the include path.
-	 */
-	if ($result == TRUE)
-	{
-		set_include_path(get_include_path() . PATH_SEPARATOR . INCLUDE_PATH);
-	}
-
-	/*
-	 * If we couldn't load the constants from APC.
-	 */
-	else
-	{
-		
-		/*
-		 * Load constants from the config file.
-		 */
-		if ( (include INCLUDE_PATH . '/config.inc.php') === FALSE )
-		{
-			die('Cannot run without a config.inc.php file. See the installation documentation.');
-		}
-		
-		define('APC_RUNNING', TRUE);
-
-		/*
-		 * And then save them to APC.
-		 */
-		$constants = get_defined_constants(TRUE);
-		apc_define_constants('config', $constants['user']);
-
-	}
-
+	die('Cannot run without a config.inc.php file. See the installation documentation.');
 }
 
 /*
@@ -213,7 +158,7 @@ try
  */
 catch (PDOException $e)
 {
-	
+
 	/*
 	 * If we get error 1049, that means that no database of this name could be found. This means
 	 * that The State Decoded has not yet been installed. Redirect to the admin section.
@@ -268,7 +213,6 @@ if (version_compare(PHP_VERSION, '5.3.6', '<'))
  */
 global $db;
 
-
 /*
  * Include Solarium's autoloader, for queries to Solr.
  */
@@ -292,6 +236,14 @@ $GLOBALS['solr_config'] = array(
  * Include the custom functions file.
  */
 require(CUSTOM_FUNCTIONS);
+
+/*
+ * If Memcached or Redis is installed, instantiate a connection to it.
+ */
+if (defined('CACHE_HOST') && defined('CACHE_PORT'))
+{
+	$cache = new Cache();
+}
 
 /*
  * Establish routes

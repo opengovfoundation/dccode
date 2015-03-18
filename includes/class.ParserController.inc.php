@@ -112,8 +112,8 @@ class ParserController
 		 */
 		if (file_exists(WEB_ROOT . '/admin/statedecoded.sql') === FALSE)
 		{
-			$this->logger->message('Could not read find ' . WEB_ROOT . '/admin/statedecoded.sql to '
-				. 'populate the database. Database tables could not be created.', 10);
+			$this->logger->message('Could not find ' . WEB_ROOT . '/admin/statedecoded.sql to '
+				. 'populate the database—database tables could not be created', 10);
 			return FALSE;
 		}
 
@@ -122,6 +122,11 @@ class ParserController
 		 * didn't support multiple queries until PHP 5.3.
 		 */
 		$sql = file_get_contents(WEB_ROOT . '/admin/statedecoded.sql');
+		if ($sql == FALSE)
+		{
+			$this->logger->message('Could not read ' . WEB_ROOT . '/admin/statedecoded.sql to '
+				. 'populate the database—database tables could not be created', 10);
+		}
 		$result = $this->db->exec($sql);
 		if ($result === FALSE)
 		{
@@ -155,7 +160,7 @@ class ParserController
 			return TRUE;
 		}
 
-		$this->logger->message('Adding an inaugural editions record to the database', 5);
+		$this->logger->message('Adding an inaugural “editions” record to the database', 5);
 
 		/*
 		 * Add a record to editions, setting the label to today's date.
@@ -174,7 +179,7 @@ class ParserController
 		 */
 		if ($result === FALSE)
 		{
-			$this->logger->message('Could not add an editions record to the database', 5);
+			$this->logger->message('Could not add an “editions” record to the database', 5);
 			return FALSE;
 		}
 
@@ -212,10 +217,28 @@ class ParserController
 
 		$errors = array();
 
-		if ($post_data['edition_option'] == 'new')
+		$create_data = array();
+
+		if (!empty($post_data['make_current']))
 		{
 
-			$create_data = array();
+			if ($current = filter_var($post_data['make_current'], FILTER_VALIDATE_INT))
+			{
+				$create_data['current'] = (int) $current;
+			}
+			else
+			{
+				$errors[] = 'Unexpected value for “make this edition current.”';
+			}
+
+		}
+		else
+		{
+			$create_data['current'] = 0;
+		}
+
+		if ($post_data['edition_option'] == 'new')
+		{
 
 			if ($name = filter_var($post_data['new_edition_name'], FILTER_SANITIZE_STRING))
 			{
@@ -233,24 +256,6 @@ class ParserController
 			else
 			{
 				$errors[] = 'Please enter a valid edition URL.';
-			}
-
-			if (!empty($post_data['make_current']))
-			{
-
-				if ($current = filter_var($post_data['make_current'], FILTER_VALIDATE_INT))
-				{
-					$create_data['current'] = (int) $current;
-				}
-				else
-				{
-					$errors[] = 'Unexpected value for “make this edition current.”';
-				}
-
-			}
-			else
-			{
-				$create_data['current'] = 0;
 			}
 
 			if (count($errors) === 0)
@@ -276,6 +281,12 @@ class ParserController
 			if ($edition_id = filter_var($post_data['edition'], FILTER_VALIDATE_INT))
 			{
 				$this->edition_id = $edition_id;
+
+				if($create_data['current'] > 0)
+				{
+					$create_data['id'] = $this->edition_id;
+					$this->update_edition($create_data);
+				}
 			}
 			else
 			{
@@ -301,6 +312,7 @@ class ParserController
 
 			if ($edition_result !== FALSE && $edition_statement->rowCount() > 0)
 			{
+				$this->export_edition_id($this->edition_id);
 				$this->edition = $edition_statement->fetch(PDO::FETCH_ASSOC);
 			}
 			else
@@ -368,37 +380,6 @@ class ParserController
 
 		if ($result !== FALSE)
 		{
-
-			/*
-			 * If possible, modify the .htaccess file, to store permanently the edition ID.
-			 */
-			if (is_writable(WEB_ROOT . '/.htaccess') == TRUE)
-			{
-
-				$htaccess = file_get_contents(WEB_ROOT . '/.htaccess');
-
-				/*
-				 * If there isn't already an edition ID in .htaccess, then write a new record.
-				 * Otherwise, update the existing record.
-				 */
-				if (strpos($htaccess, ' EDITION_ID ') === FALSE)
-				{
-					$htaccess .= PHP_EOL . PHP_EOL . 'SetEnv EDITION_ID ' . $this->db->lastInsertId() . PHP_EOL;
-				}
-				else
-				{
-					$htaccess = preg_replace('/SetEnv EDITION_ID (\d+)/', 'SetEnv EDITION_ID ' . $this->db->lastInsertId(), $htaccess);
-				}
-				$result = file_put_contents(WEB_ROOT . '/.htaccess', $htaccess);
-
-			}
-
-			/*
-			 * Store the edition ID as a constant, so that we can use it elsewhere in the import
-			 * process.
-			 */
-			define('EDITION_ID', $this->db->lastInsertId());
-
 			return $this->db->lastInsertId();
 
 		}
@@ -407,6 +388,97 @@ class ParserController
 			return FALSE;
 		}
 
+	}
+
+	/**
+	 * Update an edition.
+	 */
+	public function update_edition($data)
+	{
+		if($data['id'])
+		{
+			$sql_args[':id'] = $data['id'];
+			unset($data['id']);
+
+			if(count($data))
+			{
+				$sql = 'UPDATE editions
+						SET ';
+				$update = array();
+				foreach($data as $key => $value)
+				{
+					$sql_args[':' . $key] = $value;
+					$update[] = $key .' = :' . $key;
+				}
+				$sql .= join(',', $update);
+				$sql .= ' WHERE id = :id';
+
+				$statement = $this->db->prepare($sql);
+				$result = $statement->execute($sql_args);
+			}
+			else
+			{
+				trigger_error('Nothing to update on editions. Cowardly refusing.', E_USER_WARNING);
+			}
+		}
+		else
+		{
+			trigger_error('Updating editions without an id! Cowardly refusing.', E_USER_WARNING);
+		}
+	}
+
+	/**
+	 * Store the edition id in the .htaccess file.
+	 */
+
+
+	public function export_edition_id($edition_id)
+	{
+		/*
+		 * If possible, modify the .htaccess file, to store permanently the edition ID.
+		 */
+		if (is_writable(WEB_ROOT . '/.htaccess') == TRUE)
+		{
+
+			$htaccess = file_get_contents(WEB_ROOT . '/.htaccess');
+
+			/*
+			 * If there isn't already an edition ID in .htaccess, then write a new record.
+			 * Otherwise, update the existing record.
+			 */
+			if (strpos($htaccess, ' EDITION_ID ') === FALSE)
+			{
+				$htaccess .= PHP_EOL . PHP_EOL . 'SetEnv EDITION_ID ' . $edition_id . PHP_EOL;
+			}
+			else
+			{
+				$htaccess = preg_replace('/SetEnv EDITION_ID (\d+)/', 'SetEnv EDITION_ID ' . $edition_id, $htaccess);
+			}
+			$result = file_put_contents(WEB_ROOT . '/.htaccess', $htaccess);
+
+			if ($result)
+			{
+				$this->logger->message('Wrote edition ID to .htaccess', 5);
+			}
+			else
+			{
+				$this->logger->message('Could not write edition ID to .htaccess', 10);
+			}
+
+		}
+		else
+		{
+			$this->logger->message('Cannot write to .htaccess', 10);
+		}
+
+		/*
+		 * Store the edition ID as a constant, so that we can use it elsewhere in the import
+		 * process.
+		 */
+		if(!defined('EDITION_ID'))
+		{
+			define('EDITION_ID', $edition_id);
+		}
 	}
 
 	/**
@@ -472,8 +544,6 @@ class ParserController
 	public function prune_views()
 	{
 
-		$this->logger->message('Pruning view records greater than one year old', 5);
-
 		$sql = 'DELETE FROM
 				laws_views
 				WHERE DATEDIFF(now(), date) > :date_diff';
@@ -482,6 +552,8 @@ class ParserController
 		);
 		$statement = $this->db->prepare($sql);
 		$result = $statement->execute($sql_args);
+
+		$this->logger->message('Pruned view records greater than one year old', 5);
 
 		return TRUE;
 
@@ -493,7 +565,7 @@ class ParserController
 	public function parse()
 	{
 
-		$this->logger->message('Importing', 5);
+		$this->logger->message('Beginning the import process', 5);
 
 		/*
 		 * Create a new instance of Parser.
@@ -519,7 +591,19 @@ class ParserController
 					/*
 					 * Set the edition
 					 */
-					 'edition_id' => $this->edition_id
+					 'edition_id' => $this->edition_id,
+
+					/*
+					 * Set the logger
+					 */
+					'logger' => $this->logger,
+
+					/*
+					 * Set the downloads directories
+					 */
+					'downloads_dir' => $this->downloads_dir,
+					'downloads_url' => $this->downloads_url
+
 				)
 			);
 
@@ -531,7 +615,7 @@ class ParserController
 			/*
 			 * Iterate through the files.
 			 */
-			$this->logger->message('Parsing data files', 3);
+			$this->logger->message('Importing the law files in the import-data directory', 3);
 
 			while ($section = $parser->iterate())
 			{
@@ -548,7 +632,7 @@ class ParserController
 		}
 		catch(Exception $e)
 		{
-			$this->logger->message('ERROR: ' . $e->getMessage(), 10);
+			$this->logger->message('Import error: ' . $e->getMessage(), 10);
 			return false;
 		}
 
@@ -556,27 +640,24 @@ class ParserController
 		 * Crosslink laws_references. This needs to be done after the time of the creation of these
 		 * references, because many of the references are at that time to not-yet-inserted sections.
 		 */
-		$this->logger->message('Updating laws_references', 3);
-
 		$sql = 'UPDATE laws_references
 				SET target_law_id =
 					(SELECT laws.id
 					FROM laws
-					WHERE section = laws_references.target_section_number)
+					WHERE section = laws_references.target_section_number LIMIT 1)
 				WHERE target_law_id = :target_law_id';
 		$sql_args = array(
 			':target_law_id' => 0
 		);
 		$statement = $this->db->prepare($sql);
 		$result = $statement->execute($sql_args);
+		$this->logger->message('Updated laws_references', 3);
 
 
 		/*
 		 * Any unresolved target section numbers are spurious (strings that happen to match our
 		 * section PCRE), and can be deleted.
 		 */
-		$this->logger->message('Deleting unresolved laws_references', 3);
-
 		$sql = 'DELETE FROM laws_references
 				WHERE target_law_id = :target_law_id';
 		$sql_args = array(
@@ -584,13 +665,12 @@ class ParserController
 		);
 		$statement = $this->db->prepare($sql);
 		$result = $statement->execute($sql_args);
+		$this->logger->message('Deleted unresolved laws_references', 3);
 
 
 		/*
 		 * Break up law histories into their components and save those.
 		 */
-		$this->logger->message('Breaking up law histories', 3);
-
 		$sql = 'SELECT id, history
 				FROM laws';
 		$statement = $this->db->prepare($sql);
@@ -636,14 +716,14 @@ class ParserController
 				}
 
 			}
+		
+			$this->logger->message('Analyzed and stored law codification histories', 3);
 
 		}
 
 		/*
 		 * If we already have a view, replace it with this new one.
 		 */
-		$this->logger->message('Mapping the structure of the laws', 3);
-
 		$sql = 'DROP VIEW IF EXISTS structure_unified';
 		$statement = $this->db->prepare($sql);
 		$result = $statement->execute();
@@ -666,7 +746,7 @@ class ParserController
 		}
 
 		/*
-		 * We want to to order from highest to lowest, so flip around this array.
+ 		 * We want to to order from highest to lowest, so flip this array around.
 		 */
 		$order = array_reverse($order);
 
@@ -719,10 +799,16 @@ class ParserController
 		 */
 		$statement = $this->db->prepare($sql);
 		$result = $statement->execute();
+		
+		if ($result == FALSE)
+		{
+			$this->logger->message('Could not map the structure of the laws', 10);
+		}
 
-		$this->logger->message('Done', 5);
+		$this->logger->message('Mapped the structure of the laws', 3);
 
-		return true;
+		return TRUE;
+		
 	}
 
 	/**
@@ -730,8 +816,6 @@ class ParserController
 	 */
 	public function build_permalinks()
 	{
-
-		$this->logger->message('Building Permalinks', 5);
 
 		/*
 		 * Create a new instance of Parser.
@@ -741,11 +825,24 @@ class ParserController
 				/*
 				 * Set the database
 				 */
-				'db' => $this->db
+				'db' => $this->db,
+
+				/*
+				 * Set the logger
+				 */
+				'logger' => $this->logger,
+
+				/*
+				 * Set the downloads directories
+				 */
+				'downloads_dir' => $this->downloads_dir,
+				'downloads_url' => $this->downloads_url
 			)
 		);
 
 		$parser->build_permalinks();
+
+		$this->logger->message('Constructed and stored the URLs for all laws', 5);
 
 	}
 
@@ -758,8 +855,6 @@ class ParserController
 	public function write_api_key()
 	{
 
-		$this->logger->message('Writing API key', 5);
-
 		/*
 		 * If the site's internal API key is undefined in the config file, register a new key and
 		 * activate it.
@@ -769,7 +864,7 @@ class ParserController
 
 			$api = new API();
 			$api->form->email = EMAIL_ADDRESS;
-			$api->form->url = 'http://'.$_SERVER['SERVER_NAME'].'/';
+			$api->form->url = 'http://' . $_SERVER['SERVER_NAME'] . '/';
 			$api->suppress_activation_email = TRUE;
 			$api->register_key();
 			$api->activate_key();
@@ -778,22 +873,26 @@ class ParserController
 			 * Add the API key to the config file, if it's writable. Otherwise, display it on the
 			 * screen, along with instructions.
 			 */
-			$config_file = INCLUDE_PATH.'/config.inc.php';
+			$config_file = INCLUDE_PATH . '/config.inc.php';
 
 			if (is_writable($config_file))
 			{
+			
 				$config = file_get_contents($config_file);
-				$config = str_replace("('API_KEY', '')", "('API_KEY', '".$api->key."')", $config);
+				$config = str_replace("('API_KEY', '')", "('API_KEY', '" . $api->key . "')", $config);
 				file_put_contents($config_file, $config);
+
+				$this->logger->message('Created internal API key', 5);
+				
 			}
 			else
 			{
-				$this->logger->message('Your includes/config.inc.php file could not be modified
-					automatically. Please edit that file and set the value of <code>API_KEY</code>
-					to ' . $api->key, 10);
+			
+				$this->logger->message('Created the internal API key, but your config.inc.php file '
+					. 'could not be modified to store it—please edit that file and set the value '
+					. 'of API_KEY to ' . $api->key, 10);
+				
 			}
-
-			$this->logger->message('Done', 5);
 
 			return TRUE;
 
@@ -822,20 +921,20 @@ class ParserController
 			{
 
 				$api->form->email = EMAIL_ADDRESS;
-				$api->form->url = 'http://'.$_SERVER['SERVER_NAME'].'/';
+				$api->form->url = 'http://' . $_SERVER['SERVER_NAME'] . '/';
 				$api->suppress_activation_email = TRUE;
 				$api->register_key();
 				$api->activate_key();
 
-				$this->logger->message('The API key in <code>config.inc.php</code> does not exist in
-					the database. A new key, <code>' . $api->key . '</code>, has been registered,
-					but you must add it to <code>config.inc.php</code> manually.', 5);
+				$this->logger->message('The API key in <code>config.inc.php</code> does not exist '
+					. 'in the database; a new key (' . $api->key . ') has been registered, but you '
+					. 'must add it to config.inc.php manually.', 5);
 
 				return TRUE;
 
 			}
 
-			$this->logger->message('Using the existing API key', 5);
+			$this->logger->message('Using the existing API key', 3);
 
 		}
 	}
@@ -850,39 +949,9 @@ class ParserController
 	public function export()
 	{
 
-		$this->logger->message('Preparing to export bulk downloads', 5);
+		$this->logger->message('Exporting bulk download files', 5);
 
-		/*
-		 * Define the location of the downloads directory.
-		 */
-		$downloads_dir = WEB_ROOT . '/downloads/';
-
-		if(!isset($this->edition) || !isset($this->edition['slug']))
-		{
-			$this->logger->message('Edition is missing!  Cannot write new files.', 10);
-			throw new Exception('Edition is missing');
-		}
-
-		/*
-		 * Delete our old downloads directory.
-		 */
-		$this->logger->message('Removing old downloads folder.', 5);
-		exec('cd ' . WEB_ROOT . '/downloads/; rm -R ' . $this->edition['slug']);
-
-		/*
-		 * If we cannot write files to the downloads directory, then we can't export anything.
-		 */
-		if (is_writable($downloads_dir) === FALSE)
-		{
-			$this->logger->message('Error: ' . $downloads_dir . ' could not be written to, so bulk
-				download files could not be exported.', 10);
-			return FALSE;
-		}
-
-		/*
-		 * Add the proper structure for editions.
-		 */
-		$downloads_dir .= $this->edition['slug'] . '/';
+		$downloads_dir = $this->downloads_dir;
 
 		/*
 		 * Begin the process of exporting each section.
@@ -906,9 +975,11 @@ class ParserController
 
 		if ($write_json === TRUE)
 		{
-			$this->logger->message('Creating code JSON ZIP file', 3);
+		
 			$output = array();
 			exec('cd ' . $downloads_dir . '; zip -9rq code.json.zip code-json');
+			$this->logger->message('Created a ZIP file of the laws as JSON', 3);
+			
 		}
 
 		/*
@@ -916,9 +987,11 @@ class ParserController
 		 */
 		if ($write_text === TRUE)
 		{
-			$this->logger->message('Creating code text ZIP file', 3);
+		
 			$output = array();
 			exec('cd ' . $downloads_dir . '; zip -9rq code.txt.zip code-text');
+			$this->logger->message('Created a ZIP file of the laws as plain text', 3);
+			
 		}
 
 		/*
@@ -926,16 +999,16 @@ class ParserController
 		 */
 		if ($write_xml === TRUE)
 		{
-			$this->logger->message('Creating code XML ZIP file', 3);
+		
 			$output = array();
 			exec('cd ' . $downloads_dir . '; zip -9rq code.xml.zip code-xml');
+			$this->logger->message('Created a ZIP file of the laws as XML', 3);
+			
 		}
 
 		/*
 		 * Save dictionary as JSON.
 		 */
-		$this->logger->message('Building dictionary', 3);
-
 		$sql = 'SELECT laws.section, dictionary.term, dictionary.definition, dictionary.scope
 				FROM dictionary
 				LEFT JOIN laws
@@ -989,22 +1062,27 @@ class ParserController
 				$zip->close();
 
 			}
+			
+			$this->logger->message('Created a ZIP file of all dictionary terms as JSON', 3);
+			
 		}
-
-		$this->logger->message('Creating symlinks', 4);
 
 		if ($this->edition['current'] == '1')
 		{
 
-			$result = exec('cd ' . WEB_ROOT . '/downloads/; rm current; ln -s ' . $this->edition['slug'] . ' current');
+			$result = exec('cd ' . WEB_ROOT . '/downloads/; rm current; ln -s '
+				. $this->edition['slug'] . ' current');
 			if ($result != 0)
 			{
-				$this->logger->message('Could not create “current” symlink in /downloads/', 10);
+				$this->logger->message('Could not create “current” symlink in /downloads/—it must '
+					. 'be created manually', 10);
 			}
+			
+			$this->logger->message('Created downloads “current” symlink', 4);
 
 		}
 
-		$this->logger->message('Done generating exports', 5);
+		$this->logger->message('All bulk download files were exported', 5);
 
 	}
 
@@ -1130,28 +1208,7 @@ class ParserController
 				 * Establish the path of our code JSON storage directory.
 				 */
 				$json_dir = $downloads_dir . 'code-json' . $url;
-
-				/*
-				 * If the JSON directory doesn't exist, create it.
-				 */
-				if (!file_exists($json_dir))
-				{
-					/*
-					 * Build our directories recursively.
-					 * Don't worry about the mode, as our server's umask should handle
-					 * that for us.
-					 */
-					mkdir($json_dir, 0777, true);
-				}
-
-				/*
-				 * If we cannot write to the JSON directory, log an error.
-				 */
-				if (!is_writable($json_dir))
-				{
-					$this->logger->message('Cannot write to ' . $json_dir . ' to export files.', 10);
-					break;
-				}
+				$this->mkdir($json_dir);
 
 				/*
 				 * Set a flag telling us that we may write JSON.
@@ -1162,23 +1219,7 @@ class ParserController
 				 * Establish the path of our code text storage directory.
 				 */
 				$text_dir = $downloads_dir . 'code-text' . $url;
-
-				/*
-				 * If the text directory doesn't exist, create it.
-				 */
-				if (!file_exists($text_dir))
-				{
-					mkdir($text_dir, 0777, true);
-				}
-
-				/*
-				 * If we cannot write to the text directory, log an error.
-				 */
-				if (!is_writable($text_dir))
-				{
-					$this->logger->message('Cannot open ' . $text_dir . ' to export files.', 10);
-					break;
-				}
+				$this->mkdir($text_dir);
 
 				/*
 				 * Set a flag telling us that we may write text.
@@ -1189,23 +1230,7 @@ class ParserController
 				 * Establish the path of our code XML storage directory.
 				 */
 				$xml_dir = $downloads_dir . 'code-xml' . $url;
-
-				/*
-				 * If the XML directory doesn't exist, create it.
-				 */
-				if (!file_exists($xml_dir))
-				{
-					mkdir($xml_dir, 0777, true);
-				}
-
-				/*
-				 * If we cannot write to the text directory, log an error.
-				 */
-				if (!is_writable($xml_dir))
-				{
-					$this->logger->message('Cannot open ' . $xml_dir . ' to export files.', 10);
-					break;
-				}
+				$this->mkdir($xml_dir);
 
 				/*
 				 * Set a flag telling us that we may write XML.
@@ -1218,7 +1243,10 @@ class ParserController
 				 */
 				$parser = new Parser(
 					array(
-						'db' => $this->db
+						'db' => $this->db,
+						'logger' => $this->logger,
+						'downloads_dir' => $this->downloads_dir,
+						'downloads_url' => $this->downloads_url
 					)
 				);
 
@@ -1275,8 +1303,12 @@ class ParserController
 							$success = file_put_contents($json_dir . $filename . '.json', json_encode($law));
 							if ($success === FALSE)
 							{
-								$this->logger->message('Could not write law JSON files', 9);
+								$this->logger->message('Could not write law JSON file "' . $json_dir . $filename . '.json' . '"', 9);
 								break;
+							}
+							else
+							{
+								$this->logger->message('Wrote file "'. $json_dir . $filename . '.json' .'"', 1);
 							}
 
 						}
@@ -1290,8 +1322,12 @@ class ParserController
 							$success = file_put_contents($text_dir . $filename . '.txt', $law->plain_text);
 							if ($success === FALSE)
 							{
-								$this->logger->message('Could not write law text files', 9);
+								$this->logger->message('Could not write law text files "' . $text_dir . $filename . '.txt', $law->plain_text . '"', 9);
 								break;
+							}
+							else
+							{
+								$this->logger->message('Wrote file "'. $json_dir . $filename . '.txt' .'"', 1);
 							}
 
 						}
@@ -1303,8 +1339,8 @@ class ParserController
 						{
 
 							/*
-							 * We need to massage the $law object into matching the State Decoded
-							 * XML standard. The first step towards this is removing unnecessary
+							 * We need to massage the $law object to match the State Decoded XML
+							 * standard. The first step towards this is removing unnecessary
 							 * elements.
 							 */
 							unset($law->plain_text);
@@ -1479,14 +1515,98 @@ class ParserController
 	}
 
 	/**
+	 * Create necessary folders.
+	 */
+	public function setup_directories()
+	{
+
+		/*
+		 * Define the location of the downloads directory.
+		 */
+		$downloads_dir = WEB_ROOT . '/downloads/';
+
+		if(!isset($this->edition) || !isset($this->edition['slug']))
+		{
+			$this->logger->message('Edition is missing—cannot write new files', 10);
+			throw new Exception('Edition is missing');
+		}
+
+		/*
+		 * Delete our old downloads directory.
+		 */
+		$this->logger->message('Removing old downloads directory', 5);
+		exec('cd ' . WEB_ROOT . '/downloads/; rm -R ' . $this->edition['slug']);
+
+		/*
+		 * If we cannot write files to the downloads directory, then we can't export anything.
+		 */
+		if (is_writable($downloads_dir) === FALSE)
+		{
+			$this->logger->message('Error: ' . $downloads_dir . ' could not be written to, so bulk
+				download files could not be exported', 10);
+			return FALSE;
+		}
+
+		/*
+		 * Add the proper structure for editions.
+		 */
+		$downloads_dir .= $this->edition['slug'] . '/';
+
+		$this->downloads_dir = $downloads_dir;
+
+		$this->downloads_url = '/downloads/' . $this->edition['slug'] . '/';
+
+		foreach (array('code-json', 'code-text', 'code-xml', 'images') as $data_dir)
+		{
+		
+			$this->logger->message('Creating "' . $this->downloads_dir . $data_dir . '"', 4);
+
+			/*
+			 * If the JSON directory doesn't exist, create it.
+			 */
+			$this->mkdir($this->downloads_dir . $data_dir);
+			
+		}
+		
+		$this->logger->message('Created output directories for bulk download files', 5);
+		
+	}
+
+	public function mkdir($dir)
+	{
+
+			/*
+			 * If the directory doesn't exist, create it.
+			 */
+			if (!file_exists($dir))
+			{
+				/*
+				 * Build our directories recursively.
+				 * Don't worry about the mode, as our server's umask should handle
+				 * that for us.
+				 */
+				if (!mkdir($dir, 0777, true))
+				{
+					$this->logger->message('Cannot create directory "' . $dir . '"', 10);
+				}
+			}
+
+			/*
+			 * If we cannot write to the JSON directory, log an error.
+			 */
+			if (!is_writable($dir))
+			{
+				$this->logger->message('Cannot write to "' . $dir . '"', 10);
+			}
+	}
+
+	/**
 	 * Create and save a sitemap.xml
 	 *
 	 * List every law in this legal code and create an XML file with an entry for every one of them.
 	 */
 	function generate_sitemap()
 	{
-
-		$this->logger->message('Generating sitemap.xml', 3);
 
 		/*
 		 * The sitemap.xml file must be kept in the site root, as per the standard.
@@ -1517,7 +1637,7 @@ class ParserController
 
 		if ($result === FALSE || $statement->rowCount() == 0)
 		{
-			$this->logger->message('No laws could be found to export to the sitemap', 3);
+			$this->logger->message('No laws could be found to export to sitemap.xml', 3);
 			return FALSE;
 		}
 
@@ -1560,7 +1680,7 @@ class ParserController
 			 * Add a record of this law to the XML.
 			 */
 			$url = $xml->addChild('url');
-			$url->addchild('loc', $law->url);
+			$url->addchild('loc', SITE_URL . $law->url);
 			$url->addchild('changefreq', 'monthly');
 
 		}
@@ -1569,30 +1689,32 @@ class ParserController
 		 * Save the resulting file.
 		 */
 		file_put_contents($sitemap_file, $xml->asXML());
+		
+		$this->logger->message('Created sitemap.xml', 3);
 
 		return TRUE;
 
 	}
 
 	/**
-	 * Clear out the APC cache, if it exists
+	 * Clear out the in-memory cache, if it exists
 	 */
-	public function clear_apc()
+	public function clear_cache()
 	{
 
 		/*
-		 * If APC exists on this server, clear everything in the user space. That consists of
-		 * information that the State Decoded has stored in APC, which is now suspect, as a result
-		 * of having reloaded the laws.
+		 * If an in-memory cache is in use, invalidate all cached data. Everything that The State
+		 * Decoded has stored is now suspect, as a result of having reloaded the laws.
 		 */
-		if (extension_loaded('apc') && ini_get('apc.enabled') == 1)
+		global $cache;
+		if (isset($cache))
 		{
-			$this->logger->message('Clearing APC cache', 5);
-
-			apc_clear_cache('user');
-
-			$this->logger->message('Done', 5);
+		
+			$cache->flush();
+			$this->logger->message('Cleared in-memory cache', 5);
+			
 		}
+		
 	}
 
 	/**
@@ -1604,8 +1726,6 @@ class ParserController
 	 */
 	function structural_stats_generate()
 	{
-
-		$this->logger->message('Generating structural statistics', 3);
 
 		/*
 		 * List all of the top-level structural units.
@@ -1705,6 +1825,8 @@ class ParserController
 			$result = $statement->execute($sql_args);
 
 		}
+		
+		$this->logger->message('Generated structural statistics', 3);
 
 	} // end structural_stats_generate()
 
@@ -1786,7 +1908,7 @@ class ParserController
 		 */
 		if (!defined('PDO::ATTR_DRIVER_NAME'))
 		{
-			$this->logger->message('PHP Data Objects (PDO) must be enabled.', 10);
+			$this->logger->message('PHP Data Objects (PDO) must be enabled', 10);
 			$error = TRUE;
 		}
 
@@ -1795,7 +1917,7 @@ class ParserController
 		 */
 		if (!in_array('mysql', PDO::getAvailableDrivers()))
 		{
-			$this->logger->message('PHP Data Objects (PDO) must have a MySQL driver enabled.', 10);
+			$this->logger->message('PHP Data Objects (PDO) must have a MySQL driver enabled', 10);
 			$error = TRUE;
 		}
 
@@ -1811,7 +1933,7 @@ class ParserController
 			exec('which tidy', $result, $status);
 			if ($status != 0)
 			{
-				$this->logger->message('HTML Tidy must be installed.', 10);
+				$this->logger->message('HTML Tidy must be installed', 10);
 				$error = TRUE;
 			}
 
@@ -1822,7 +1944,7 @@ class ParserController
 		 */
 		if (extension_loaded('xml') == FALSE)
 		{
-			$this->logger->message('PHP’s XML extension must be installed and enabled.', 10);
+			$this->logger->message('PHP’s XML extension must be installed and enabled', 10);
 			$error = TRUE;
 		}
 
@@ -1832,7 +1954,7 @@ class ParserController
 		exec('which xmllint', $result, $status);
 		if ($status != 0)
 		{
-			$this->logger->message('xmllint must be installed.', 10);
+			$this->logger->message('xmllint must be installed', 10);
 			$error = TRUE;
 		}
 
@@ -1842,7 +1964,7 @@ class ParserController
 		exec('which zip', $result, $status);
 		if ($status != 0)
 		{
-			$this->logger->message('zip must be installed.', 10);
+			$this->logger->message('zip must be installed', 10);
 			$error = TRUE;
 		}
 
@@ -1851,7 +1973,7 @@ class ParserController
 		 */
 		if (is_writable(INCLUDE_PATH . '/config.inc.php') !== TRUE)
 		{
-			$this->logger->message('config.inc.php must be writable by the server.', 10);
+			$this->logger->message('config.inc.php must be writable by the server', 10);
 			$error = TRUE;
 		}
 
@@ -1879,24 +2001,27 @@ class ParserController
 		if (is_writable(WEB_ROOT . '/downloads') !== TRUE)
 		{
 			$this->logger->message('The downloads directory (' . WEB_ROOT . '/downloads/'
-				. ') must be writable by the server.', 10);
+				. ') must be writable by the server', 10);
 			$error = TRUE;
 		}
 
-		/*
-		 * Make sure that Solr is responsive.
-		 */
-		Solarium_Autoloader::register();
-		$client = new Solarium_Client($GLOBALS['solr_config']);
-		$ping = $client->createPing();
-		try
+		if(defined('SOLR_URL'))
 		{
-			$result = $client->ping($ping);
-		}
-		catch(Solarium_Exception $e)
-		{
-			$this->logger->message('Solr must be installed, configured in config.inc.php, and running.', 10);
-			$error = TRUE;
+			/*
+			 * Make sure that Solr is responsive.
+			 */
+			Solarium_Autoloader::register();
+			$client = new Solarium_Client($GLOBALS['solr_config']);
+			$ping = $client->createPing();
+			try
+			{
+				$result = $client->ping($ping);
+			}
+			catch(Solarium_Exception $e)
+			{
+				$this->logger->message('Solr must be installed, configured in config.inc.php, and running', 10);
+				$error = TRUE;
+			}
 		}
 
 		if (isset($error))
@@ -1928,15 +2053,22 @@ class ParserController
 
 		if ($this->edition['current'] != '1')
 		{
-			$this->logger->message('The edition is not current, skipping update to search index.');
+			$this->logger->message('The edition is not current, skipping the update of the search '
+				. ' index', 9);
+			return;
+		}
+
+		if (!defined('SOLR_URL'))
+		{
+			$this->logger->message('Solr is not in use, skipping index', 9);
 			return;
 		}
 
 		else
 		{
 
-			$this->logger->message('Updating search index.');
-
+			$this->logger->message('Updating search index', 5);
+			
 			/*
 			 * Define the Solr URL to which the XML files will be posted.
 			 */
@@ -1949,8 +2081,8 @@ class ParserController
 
 			if (!file_exists($path) ||!is_dir($path))
 			{
-				$this->logger->message('XML output directory ' . $path . ' does not exist—could not '
-					. 'index laws with Solr.', 10);
+				$this->logger->message('XML output directory ' . $path . ' does not exist—could '
+					. ' not index laws with Solr', 10);
 				return FALSE;
 			}
 
@@ -1965,7 +2097,8 @@ class ParserController
 
 			if (count($files) == 0)
 			{
-				$this->logger->message('No files were found in ' . $path . '—could not index laws with Solr.', 10);
+				$this->logger->message('No files were found in ' . $path . '—could not index laws '
+					. 'with Solr', 10);
 				return FALSE;
 			}
 
@@ -1987,7 +2120,7 @@ class ParserController
 			if (LAW_LONG_URLS === FALSE)
 			{
 
-				$this->logger->message('Validating XML files before indexing them', 5);
+				$this->logger->message('Validating XML files before indexing them', 3);
 				exec('xmllint --noout ' . $path . '* > ' . $path . 'xmllint.txt 2>&1');
 				$output = file_get_contents($path . 'xmllint.txt');
 				unlink($path . 'xmllint.txt');
@@ -1996,7 +2129,8 @@ class ParserController
 			else
 			{
 				$this->logger->message('Cannot try to validate XML files, because LAW_LONG_URLS is '
-					. 'enabled—proceeding with the assumption that they do not contain errors', 5);
+					. 'enabled—proceeding with the assumption that the XML does not contain '
+					. 'errors', 5);
 			}
 
 			/*
@@ -2024,8 +2158,9 @@ class ParserController
 
 					if ($invalid_files > 0)
 					{
-						$this->logger->message('Suppressing the indexing of ' .
-							number_format($invalid_files) . ' laws, for the presence of invalid XML');
+						$this->logger->message('Suppressing the indexing of '
+							. number_format($invalid_files) . ' laws, due to the presence of '
+							. 'invalid XML');
 					}
 
 				}
@@ -2063,7 +2198,7 @@ class ParserController
 				}
 			}
 
-			$this->logger->message('Laws indexed with Solr successfully.', 7);
+			$this->logger->message('Laws were indexed with Solr', 5);
 
 			return TRUE;
 
@@ -2073,6 +2208,11 @@ class ParserController
 
 	function clear_index()
 	{
+	
+		if (!defined('SOLR_URL'))
+		{
+			return TRUE;
+		}
 		$request = '<delete><query>*:*</query></delete>';
 		if ( !$this->handle_solr_request($request) )
 		{
@@ -2084,8 +2224,11 @@ class ParserController
 		{
 			return FALSE;
 		}
+		
+		$this->logger->message('Solr cleared of all indexed laws', 5);
 
 		return TRUE;
+		
 	}
 
 	function handle_solr_request($fields = array(), $multipart = false, $parameters = array())
@@ -2131,13 +2274,13 @@ class ParserController
 		if (curl_errno($ch) > 0)
 		{
 			$this->logger->message('The attempt to post files to Solr via cURL returned an '
-				. 'error code, ' . curl_errno($ch) . ', from cURL. Could not index laws.', 10);
+				. 'error code, ' . curl_errno($ch) . ', from cURL—could not index laws', 10);
 			return FALSE;
 		}
 
 		if ( (FALSE === $response_json) || !is_string($response_json) )
 		{
-			$this->logger->message('Could not connect to Solr.', 10);
+			$this->logger->message('Could not connect to Solr', 10);
 			return FALSE;
 		}
 
@@ -2145,14 +2288,14 @@ class ParserController
 
 		if ( ($response === FALSE) || empty($response) )
 		{
-			$this->logger->message('Solr returned invalid JSON.', 8);
+			$this->logger->message('Solr returned invalid JSON', 8);
 			return FALSE;
 		}
 
 		if (isset($response->error))
 		{
-			var_dump($response->error);
-			$this->logger->message('Solr error: ',  8);
+			$this->logger->message('Solr returned the following unexpected error: '
+				. print_r($response, true),  8);
 			return FALSE;
 		}
 

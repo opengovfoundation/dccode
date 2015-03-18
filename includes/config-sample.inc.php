@@ -56,7 +56,7 @@ define('CUSTOM_FUNCTIONS', 'class.State-sample.inc.php');
 /*
  * The directory in which templates are stored.
  */
-define('TEMPLATE_DIR', WEB_ROOT . '/themes/');
+define('THEMES_DIR', WEB_ROOT . '/themes/');
 
 /*
  * Which theme to use.
@@ -154,7 +154,7 @@ define('SOLR_URL', 'http://localhost:8080/solr/statedecoded/');
  * The HTML to be displayed on individual law pages that will allow them to be shared via social
  * services. Twitter and Facebook are included by default.
  */
-// define('SOCIAL_LINKS', '<div id="twitter"><a href="https://twitter.com/share" class="twitter-share-button">Tweet</a><script>!function(d,s,id){var js,fjs=d.getElementsByTagName(s)[0],p=/^http:/.test(d.location)?\'http\':\'https\';if(!d.getElementById(id)){js=d.createElement(s);js.id=id;js.src=p+\'://platform.twitter.com/widgets.js\';fjs.parentNode.insertBefore(js,fjs);}}(document, \'script\', \'twitter-wjs\');</script></div><div id="facebook"><script src="http://connect.facebook.net/en_US/all.js#xfbml=1"></script><fb:like layout="button_count" show_faces="false" width="100" action="recommend"></fb:like></div>');
+// define('SOCIAL_LINKS', '<div id="twitter"><a href="https://twitter.com/share" class="twitter-share-button">Tweet</a><script>!function(d,s,id){var js,fjs=d.getElementsByTagName(s)[0],p=/^http:/.test(d.location)?\'http\':\'https\';if(!d.getElementById(id)){js=d.createElement(s);js.id=id;js.src=p+\'://platform.twitter.com/widgets.js\';fjs.parentNode.insertBefore(js,fjs);}}(document, \'script\', \'twitter-wjs\');</script></div><div id="facebook"><script src="//connect.facebook.net/en_US/all.js#xfbml=1"></script><fb:like layout="button_count" show_faces="false" width="100" action="recommend"></fb:like></div>');
 
 /**
  * API Keys
@@ -185,6 +185,13 @@ define('VERSION', '0.81');
 // define('VARNISH_HOST', 'http://127.0.0.1:80/');
 
 /*
+ * If you're running a Memcached or Redis server, and you want The State Decoded to cache assets
+ * within that cache, provide the host and port here.
+ */
+// define('CACHE_HOST', 'localhost');
+// define('CACHE_PORT', '11211');
+
+/*
  * If you want to track traffic stats with Google Analytics, provide your site's web property ID
  * here.
  */
@@ -209,3 +216,23 @@ define('VERSION', '0.81');
  */
 // define('COURTLISTENER_USERNAME', 'jane_doe');
 // define('COURTLISTENER_PASSWORD', 's3cr3tp@ssw0rd');
+
+/*
+ * Define the site's URL. This can be defined manually by removing the below stanza, leaving just:
+ *
+ * define('SITE_URL', 'http://example.com:1234');
+ *
+ * substituting, of course, your site's protocol, domain name, and port (if you're using a non-
+ * standard port).
+ */
+$url = 'http://';
+if ( (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || ($_SERVER['SERVER_PORT'] == 443) )
+{
+	$url = 'https://';
+}
+$url .= $_SERVER['SERVER_NAME'];
+if ( ($_SERVER['SERVER_PORT'] != '80') && ($_SERVER['SERVER_PORT'] != '443') )
+{
+	$url .= ':' . $_SERVER['SERVER_PORT'];
+}
+define('SITE_URL', $url);

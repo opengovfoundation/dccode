@@ -221,7 +221,7 @@ class Law
 				/*
 				 * Append this section.
 				 */
-				if(!isset($this->text))
+				if (!isset($this->text))
 				{
 					$this->text = new StdClass();
 				}
@@ -368,9 +368,11 @@ class Law
 		{
 
 			/*
-			 * If we already have this data cached as metadata.
+			 * If we already have this data cached as metadata, and it's not blank. (We cache not
+			 * just when there are court decisions for a given law, but also when there are no
+			 * court decisions for a law. "No court decisions" is represented as an empty record.)
 			 */
-			if (isset($this->metadata->court_decisions))
+			if ( isset($this->metadata->court_decisions) && !empty($this->metadata->court_decisions) )
 			{
 				$this->court_decisions = $this->metadata->court_decisions;
 			}
@@ -474,7 +476,7 @@ class Law
 
 		$this->formats->txt = substr($this->url, 0, -1) . '.txt';
 		$this->formats->json = substr($this->url, 0, -1) . '.json';
-		$this->formats->json = substr($this->url, 0, -1) . '.xml';
+		$this->formats->xml = substr($this->url, 0, -1) . '.xml';
 
 		/*
 		 * Create metadata in the Dublin Core format.

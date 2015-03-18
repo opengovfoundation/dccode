@@ -79,25 +79,29 @@ class Page
 	 */
 	public function load_template($template_file)
 	{
+	
 		/*
-		 * Save the contents of the template file to a variable. First check APC and see if it's
-		 * stored there.
+		 * Save the contents of the template file to a variable. See if it's already cached in
+		 * memory.
 		 */
-		$storage_name = 'template-'.$this->theme_name.'-'.$this->page;
-		if ( APC_RUNNING === TRUE)
+		$storage_name = 'template-' . $this->theme_name . '-' . $this->page;
+		global $cache;
+		if (isset($cache))
 		{
-			$html = apc_fetch($storage_name);
+
+			$html = $cache->retrieve($storage_name);
 			if ($html === FALSE)
 			{
-
 
 				if (check_file_available($template_file))
 				{
 					$html = file_get_contents($template_file);
 				}
 
-				apc_store($storage_name, $html);
+				$cache->store($storage_name, $html);
+
 			}
+			
 		}
 		else
 		{
@@ -105,7 +109,7 @@ class Page
 		}
 
 		return $html;
-		
+
 	}
 
 
@@ -252,7 +256,11 @@ class Page
 	{
 	
 		$type = $asset['type'];
-		
+		if(!isset($collated_assets[$type]))
+		{
+			$collated_assets[$type] = array();
+		}
+
 		/*
 		 * Resolve requirements.
 		 */
@@ -276,10 +284,6 @@ class Page
 					 */
 					$resolved_path = $this->assets[$required]['resolved_path'];
 					$asset_type = $this->assets[$required]['type'];
-					if(!isset($collated_assets[$type]))
-					{
-						$collated_assets[$type] = array();
-					}
 
 					if (!in_array(
 						$resolved_path,
@@ -288,18 +292,21 @@ class Page
 						$collated_assets = $this->build_asset($collated_assets, $required,
 							$this->assets[$required]);
 					}
-					
+
 				} /* !in_array($required ... */
-				
+
 			} /* foreach ($asset['requires'] */
-			
+
 		} /* if (isset($asset['requires'] .. */
 
 		/*
 		 * The easy part - just add the asset.
 		 * We collate these into types, for ease of display.
 		 */
-		$collated_assets[ $type ][] = $asset['resolved_path'];
+		if(!in_array($asset['resolved_path'], $collated_assets[ $type ]))
+		{
+			$collated_assets[ $type ][] = $asset['resolved_path'];
+		}
 
 		return $collated_assets;
 
